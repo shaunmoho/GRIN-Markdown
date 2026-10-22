@@ -1,0 +1,42 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
+html, body { margin: 0; padding: 0; }
+html[data-theme="light"] body { background: #ffffff; }
+html[data-theme="dark"] body { background: #0d1117; }
+
+.markdown-body {
+  box-sizing: border-box;
+  min-width: 200px;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+}
+@media (max-width: 600px) { .markdown-body { padding: 12px 14px 32px; } }
+
+/* Mermaid */
+.mermaid-block { margin-bottom: 16px; }
+.mermaid-block .mermaid-src { display: none; }
+.mermaid-block:not(.rendered) .mermaid-src { display: block; opacity: .6; }
+.mermaid-out { text-align: center; overflow-x: auto; }
+.mermaid-out svg { max-width: 100%; height: auto; }
+.mermaid-error {
+  text-align: left;
+  border: 1px solid #d1242f;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #d1242f;
+}
+.mermaid-error pre { margin: 6px 0 0; white-space: pre-wrap; background: transparent; padding: 0; color: inherit; }
+
+/* Front matter */
+table.front-matter td:first-child { font-weight: 600; white-space: nowrap; }
+
+/* Task lists: GitHub renders the checkbox without a bullet */
+.markdown-body .task-list-item { list-style-type: none; }
+.markdown-body .task-list-item input { margin: 0 .2em .25em -1.4em; vertical-align: middle; }
+
+/* Placeholder message shown for non-Markdown files */
+.placeholder { color: #8b949e; text-align: center; margin-top: 3em; font-style: italic; }
+
+/* GitHub alerts: icon spacing (github-markdown-css leaves this to the octicon class) */
+.markdown-alert-title svg { margin-right: 8px; fill: currentColor; }
