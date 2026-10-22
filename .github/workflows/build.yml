@@ -1,0 +1,106 @@
+# Builds GRIN-Markdown for Win32, x64 and ARM64 on every push and pull request.
+# Pushing a tag like v1.0.1 also publishes a GitHub release with the three zips, their
+# SHA-256 hashes and ready-to-paste nppPluginList entries.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [Win32, x64, ARM64]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Check tag matches the DLL version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src/resource.h -Pattern 'GRIN_VERSION_STR\s+"([^"]+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "Tag ${{ github.ref_name }} does not match src/resource.h version $version. Bump the version in src/resource.h first."
+          }
+
+      - name: Build and package
+        shell: pwsh
+        run: ./build.ps1 -Platform ${{ matrix.platform }} -Package
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: GRIN-Markdown-${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write release notes with hashes and plugin-list entries
+        run: |
+          tag="${{ github.ref_name }}"; version="${tag#v}"; repo="${{ github.repository }}"
+          {
+            echo "GRIN-Markdown $version: GitHub Flavored Markdown viewer with Mermaid diagrams for Notepad++."
+            echo
+            echo "Install: close Notepad++ and extract the zip matching your Notepad++ into \`plugins\\GRIN-Markdown\\\`."
+            echo
+            echo "| File | SHA-256 |"
+            echo "| --- | --- |"
+            for f in dist/*.zip; do echo "| $(basename "$f") | \`$(sha256sum "$f" | cut -d' ' -f1)\` |"; done
+            echo
+            echo "<details><summary>nppPluginList entries</summary>"
+            for pair in "Win32:pl.x86.json" "x64:pl.x64.json" "ARM64:pl.arm64.json"; do
+              plat="${pair%%:*}"; list="${pair#*:}"
+              zip="GRIN-Markdown-$version-$plat.zip"
+              [ -f "dist/$zip" ] || continue
+              echo
+              echo "\`$list\`"
+              echo
+              echo '```json'
+              cat <<EOF
+          {
+              "folder-name": "GRIN-Markdown",
+              "display-name": "GRIN-Markdown (GFM + Mermaid preview)",
+              "version": "$version",
+              "npp-compatible-versions": "[8.4.1,]",
+              "id": "$(sha256sum "dist/$zip" | cut -d' ' -f1)",
+              "repository": "https://github.com/$repo/releases/download/$tag/$zip",
+              "description": "Live GitHub Flavored Markdown preview with Mermaid diagrams, syntax highlighting, alerts, task lists, footnotes and scroll sync. Fully offline. Requires the Microsoft Edge WebView2 Runtime (included in Windows 10/11).",
+              "author": "shaunmoho",
+              "homepage": "https://github.com/$repo"
+          }
+          EOF
+              echo '```'
+            done
+            echo "</details>"
+          } > notes.md
+          cat notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/*.zip --repo "${{ github.repository }}" --title "GRIN-Markdown ${{ github.ref_name }}" --notes-file notes.md
