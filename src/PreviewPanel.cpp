@@ -258,6 +258,9 @@ namespace
 			{ L".bmp", L"image/bmp" }, { L".ico", L"image/x-icon" }, { L".svg", L"image/svg+xml" },
 			{ L".mp4", L"video/mp4" }, { L".webm", L"video/webm" }, { L".ogv", L"video/ogg" },
 			{ L".mp3", L"audio/mpeg" }, { L".ogg", L"audio/ogg" }, { L".wav", L"audio/wav" },
+			// Custom stylesheets and the fonts they reference.
+			{ L".css", L"text/css" }, { L".woff2", L"font/woff2" }, { L".woff", L"font/woff" },
+			{ L".ttf", L"font/ttf" }, { L".otf", L"font/otf" },
 		};
 		const std::wstring ext = ToLower(PathFindExtensionW(path.c_str()));
 		for (const auto& [e, type] : kTypes)
@@ -569,6 +572,7 @@ void PreviewPanel::OnWebMessage(const std::wstring& json)
 	{
 		_pageReady = true;
 		_lastScrollLine = -1;
+		_lastStyle.clear();
 		UpdateNow();
 	}
 	else if (type->second == L"link")
@@ -642,8 +646,9 @@ std::wstring PreviewPanel::DocumentBaseUrl(const std::wstring& filePath) const
 	return kDocOrigin + PathToUrlPath(folder) + L"/";
 }
 
-// Serves images/media referenced by the document (https://doc.grin-markdown.local/C:/dir/img.png).
-// Only media types are served, so a document cannot pull arbitrary local files into the page.
+// Serves images/media referenced by the document (https://doc.grin-markdown.local/C:/dir/img.png),
+// and the custom stylesheets with their fonts. Only those types are served, so a document cannot
+// pull arbitrary local files into the page.
 void PreviewPanel::OnWebResourceRequested(ICoreWebView2WebResourceRequestedEventArgs* args)
 {
 	ICoreWebView2WebResourceRequest* request = nullptr;
@@ -696,8 +701,15 @@ void PreviewPanel::UpdateNow()
 	if (!_visible || !_pageReady || !_webview)
 		return;
 
+	PostStyle();
+
 	const std::wstring path = CurrentFilePath();
 	const wchar_t* theme = IsDarkTheme() ? L"dark" : L"light";
+
+	// While a custom stylesheet is being edited, keep previewing the last document with it.
+	if (!path.empty() && (lstrcmpiW(path.c_str(), _settings.ResolvePath(_settings.customCssLight).c_str()) == 0 ||
+		lstrcmpiW(path.c_str(), _settings.ResolvePath(_settings.customCssDark).c_str()) == 0))
+		return;
 
 	if (!ShouldPreview(path))
 	{
@@ -760,7 +772,48 @@ void PreviewPanel::OnEditorScrolled()
 void PreviewPanel::OnThemeChanged()
 {
 	UpdateBackground();
-	PostJson(std::wstring(L"{\"type\":\"theme\",\"theme\":\"") + (IsDarkTheme() ? L"dark" : L"light") + L"\"}");
+	PostStyle();
+}
+
+std::wstring PreviewPanel::CustomCssPath() const
+{
+	if (!_settings.useCustomCss)
+		return {};
+	return _settings.ResolvePath(IsDarkTheme() ? _settings.customCssDark : _settings.customCssLight);
+}
+
+// Tells the page which theme, stylesheets and diagram theme to use. Sent only when
+// something changed; the stylesheet URL carries the file's write time, so saving
+// the custom CSS reloads it.
+void PreviewPanel::PostStyle()
+{
+	const bool dark = IsDarkTheme();
+	std::wstring cssUrl;
+	const std::wstring cssPath = CustomCssPath();
+	WIN32_FILE_ATTRIBUTE_DATA info{};
+	if (!cssPath.empty() && GetFileAttributesExW(cssPath.c_str(), GetFileExInfoStandard, &info) &&
+		!(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+	{
+		const ULONGLONG stamp = (static_cast<ULONGLONG>(info.ftLastWriteTime.dwHighDateTime) << 32) | info.ftLastWriteTime.dwLowDateTime;
+		cssUrl = kDocOrigin + PathToUrlPath(cssPath) + L"?v=" + std::to_wstring(stamp);
+	}
+
+	std::wstring json = L"{\"type\":\"style\",\"theme\":\"";
+	json += dark ? L"dark" : L"light";
+	json += L"\",\"gfm\":";
+	json += _settings.useCustomCss && _settings.replaceGithubCss && !cssUrl.empty() ? L"false" : L"true";
+	json += L",\"code\":";
+	AppendJsonString(json, dark ? _settings.codeThemeDark : _settings.codeThemeLight);
+	json += L",\"mermaid\":";
+	AppendJsonString(json, dark ? _settings.mermaidThemeDark : _settings.mermaidThemeLight);
+	json += L",\"css\":";
+	AppendJsonString(json, cssUrl);
+	json += L'}';
+
+	if (json == _lastStyle || !_pageReady)
+		return;
+	_lastStyle = json;
+	PostJson(json);
 }
 
 void PreviewPanel::UpdateBackground()

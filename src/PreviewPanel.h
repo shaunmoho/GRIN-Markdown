@@ -33,8 +33,13 @@ public:
 	void ScheduleUpdate();
 	void UpdateNow();
 	void OnEditorScrolled();
+	// Theme or style settings changed: re-sends the theme, stylesheets and diagram theme.
 	void OnThemeChanged();
 	void Shutdown();
+
+	bool IsDarkTheme() const;
+	// Full path of the custom stylesheet for the current theme, or empty when none is in use.
+	std::wstring CustomCssPath() const;
 
 	// Called when the docking container's close button is used.
 	void (*onClosed)() = nullptr;
@@ -54,12 +59,12 @@ private:
 
 	HWND CurrentScintilla() const;
 	int FirstVisibleDocLine() const;
-	bool IsDarkTheme() const;
 	bool ShouldPreview(const std::wstring& path) const;
 	std::wstring CurrentFilePath() const;
 	std::wstring DocumentBaseUrl(const std::wstring& filePath) const;
 	void OnWebResourceRequested(ICoreWebView2WebResourceRequestedEventArgs* args);
 	void PostJson(const std::wstring& json);
+	void PostStyle();
 
 	HINSTANCE _module;
 	NppData _npp;
@@ -80,6 +85,7 @@ private:
 	ICoreWebView2* _webview = nullptr;
 
 	int _lastScrollLine = -1;
+	std::wstring _lastStyle; // last "style" message sent to the page
 	std::wstring _pendingAnchor; // "#fragment" of a link that opened another document
 	std::wstring _errorText;
 };

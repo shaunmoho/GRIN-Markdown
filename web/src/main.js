@@ -7,7 +7,10 @@
 //   host -> page  { type: "render", text, line | anchor, docBase, theme }
 //                 { type: "placeholder", text, theme }   current file is not Markdown
 //                 { type: "scroll", line }
-//                 { type: "theme", theme }          theme: "light" | "dark"
+//                 { type: "style", theme, gfm, code, mermaid, css }
+//                        theme: "light" | "dark"; gfm: false drops github-markdown-css;
+//                        code: highlight.js theme ("" = GitHub's); mermaid: Mermaid theme ("" = by theme);
+//                        css: URL of the custom stylesheet ("" = none)
 //   page -> host  { type: "ready" }
 //                 { type: "link", href }            link the page did not handle itself
 //                 { type: "gotoLine", line }        double-click in the preview
@@ -27,6 +30,13 @@ const content = document.getElementById('content');
 const APP_BASE = new URL('.', document.currentScript?.src || location.href).href;
 let currentTheme = 'light';
 let docBase = '';
+let style = { gfm: true, code: '', mermaid: '', css: '' };
+
+// highlight.js themes bundled by build.mjs.
+const CODE_THEMES = new Set(['github', 'github-dark', 'github-dark-dimmed', 'vs', 'vs2015', 'xcode', 'intellij-light',
+  'atom-one-light', 'atom-one-dark', 'stackoverflow-light', 'stackoverflow-dark', 'a11y-light', 'a11y-dark',
+  'tokyo-night-light', 'tokyo-night-dark', 'rose-pine-dawn', 'rose-pine', 'night-owl', 'monokai', 'nord']);
+const MERMAID_THEMES = new Set(['default', 'neutral', 'forest', 'dark', 'base']);
 
 // ---------------------------------------------------------------------------
 // Markdown pipeline
@@ -168,7 +178,7 @@ function renderFrontMatter(yaml) {
 // ---------------------------------------------------------------------------
 
 let mermaidLoad = null;
-const svgCache = new Map(); // `${theme}\n${source}` -> svg markup | { error }
+const svgCache = new Map(); // `${theme}\n${font}\n${source}` -> svg markup | { error }
 let diagramSeq = 0;
 
 function loadMermaid() {
@@ -184,16 +194,21 @@ function loadMermaid() {
   return mermaidLoad;
 }
 
-let mermaidTheme = null;
+let mermaidConfigKey = null;
 async function renderDiagrams(generation) {
   const blocks = [...content.querySelectorAll('.mermaid-block')];
   if (!blocks.length) return;
+
+  // Diagrams follow the configured Mermaid theme and the (possibly custom) body font.
+  const theme = MERMAID_THEMES.has(style.mermaid) ? style.mermaid : currentTheme === 'dark' ? 'dark' : 'default';
+  const fontFamily = getComputedStyle(content).fontFamily;
+  const configKey = `${theme}\n${fontFamily}`;
 
   // Fill in everything we already have so re-renders don't flicker.
   const pending = [];
   for (const block of blocks) {
     const src = block.querySelector('.mermaid-src').textContent;
-    const key = `${currentTheme}\n${src}`;
+    const key = `${configKey}\n${src}`;
     if (svgCache.has(key)) showDiagram(block, svgCache.get(key));
     else pending.push({ block, src, key });
   }
@@ -206,14 +221,9 @@ async function renderDiagrams(generation) {
     pending.forEach(({ block }) => showDiagram(block, { error: e.message }));
     return;
   }
-  if (mermaidTheme !== currentTheme) {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: currentTheme === 'dark' ? 'dark' : 'default',
-      fontFamily: getComputedStyle(content).fontFamily,
-    });
-    mermaidTheme = currentTheme;
+  if (mermaidConfigKey !== configKey) {
+    mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme, fontFamily });
+    mermaidConfigKey = configKey;
   }
 
   for (const { block, src, key } of pending) {
@@ -283,7 +293,15 @@ function render(text) {
   });
   content.innerHTML = html;
   for (const a of content.querySelectorAll('a[href]')) a.removeAttribute('target');
+  markCodeBlocks();
   renderDiagrams(generation);
+}
+
+// With a chosen code theme, code blocks take its background and text color too
+// (highlight.js themes put those on .hljs); otherwise GitHub's code block colors stay.
+function markCodeBlocks() {
+  const themed = CODE_THEMES.has(style.code);
+  for (const pre of content.querySelectorAll('pre:not(.mermaid-block pre)')) pre.classList.toggle('hljs', themed);
 }
 
 // ---------------------------------------------------------------------------
@@ -346,20 +364,81 @@ document.addEventListener('click', onLinkClick);
 document.addEventListener('auxclick', onLinkClick);
 
 // ---------------------------------------------------------------------------
-// Theme / host messages
+// Theme, stylesheets / host messages
 // ---------------------------------------------------------------------------
+
+// The built-in stylesheets are imported into cascade layers and the custom one is
+// not: unlayered rules always beat layered ones, so a custom `h1 { ... }` overrides
+// github-markdown-css's more specific `.markdown-body h1`.
+let appliedBase = null;
+let appliedCss = null;
+const sheets = {}; // slot -> newest element
+
+// Returns true when a stylesheet is being (re)loaded; diagrams are redrawn once it has.
+function updateStyles() {
+  const code = CODE_THEMES.has(style.code) ? style.code : currentTheme === 'dark' ? 'github-dark' : 'github';
+  const app = (name) => new URL(name, APP_BASE).href; // absolute: <base> points at the document's folder
+  const base = [
+    '@layer gfm, code, app;',
+    style.gfm ? `@import url("${app(`github-markdown-${currentTheme}.css`)}") layer(gfm);` : '',
+    `@import url("${app(`hljs-${code}.css`)}") layer(code);`,
+    `@import url("${app('preview.css')}") layer(app);`,
+  ].join('\n');
+  let changed = false;
+  if (base !== appliedBase) {
+    appliedBase = base;
+    swapSheet('base', Object.assign(document.createElement('style'), { textContent: base }));
+    changed = true;
+  }
+  if (style.css !== appliedCss) {
+    appliedCss = style.css;
+    swapSheet('custom', style.css ? Object.assign(document.createElement('link'), { rel: 'stylesheet', href: style.css }) : null);
+    changed = true;
+  }
+  markCodeBlocks();
+  return changed;
+}
+
+// Keeps the previous sheet of a slot until its replacement has loaded, so switching does not flash unstyled.
+function swapSheet(slot, el) {
+  sheets[slot] = el;
+  const removeOld = () => {
+    for (const old of document.querySelectorAll(`[data-sheet="${slot}"]`)) if (old !== el) old.remove();
+  };
+  if (!el) {
+    removeOld();
+    return;
+  }
+  el.dataset.sheet = slot;
+  const loaded = () => {
+    if (sheets[slot] !== el) return; // superseded; the newer sheet cleans up
+    removeOld();
+    renderDiagrams(renderGeneration);
+    if (lastLine) scrollToLine(lastLine); // fonts and spacing may have moved the synced line
+  };
+  el.addEventListener('load', loaded);
+  el.addEventListener('error', loaded);
+  document.head.appendChild(el);
+}
 
 function setTheme(theme) {
   theme = theme === 'dark' ? 'dark' : 'light';
   if (theme === currentTheme && document.documentElement.dataset.theme) return false;
   currentTheme = theme;
   document.documentElement.dataset.theme = theme;
-  // Toggle via media rather than link.disabled: Chromium can ignore `disabled`
-  // on a stylesheet that is still loading.
-  for (const link of document.querySelectorAll('link[data-theme]')) {
-    link.media = link.dataset.theme === theme ? 'all' : 'not all';
-  }
+  updateStyles();
   return true;
+}
+
+function setStyle(msg) {
+  style = { gfm: msg.gfm !== false, code: msg.code || '', mermaid: msg.mermaid || '', css: msg.css || '' };
+  const theme = msg.theme === 'dark' ? 'dark' : 'light';
+  if (theme !== currentTheme) {
+    currentTheme = theme;
+    document.documentElement.dataset.theme = theme;
+  }
+  // A Mermaid-only change loads no stylesheet, so redraw the diagrams right away.
+  if (!updateStyles()) renderDiagrams(renderGeneration);
 }
 
 function setDocBase(base) {
@@ -380,9 +459,9 @@ host?.addEventListener('message', (e) => {
   if (!msg || typeof msg !== 'object') return;
   switch (msg.type) {
     case 'render': {
-      const themeChanged = msg.theme ? setTheme(msg.theme) : false;
+      if (msg.theme) setTheme(msg.theme);
       setDocBase(msg.docBase || '');
-      if (msg.text !== lastText || themeChanged) {
+      if (msg.text !== lastText) {
         lastText = msg.text;
         render(msg.text);
       }
@@ -400,11 +479,8 @@ host?.addEventListener('message', (e) => {
     case 'scroll':
       scrollToLine(msg.line);
       break;
-    case 'theme':
-      if (setTheme(msg.theme) && lastText !== null) {
-        render(lastText);
-        scrollToLine(lastLine);
-      }
+    case 'style':
+      setStyle(msg);
       break;
   }
 });

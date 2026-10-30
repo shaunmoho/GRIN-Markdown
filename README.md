@@ -17,6 +17,8 @@ Open this README in Notepad++ with the preview to see every feature; the [Showca
 - **Live update** while typing (300 ms debounce), and on tab switch
 - **Scroll sync**: the preview follows the editor; **double-click** the preview to jump the editor to that line
 - **Light/dark** GitHub styling that follows Notepad++'s dark mode (or force either)
+- **Custom styling**: an optional stylesheet per theme layered on top of the GitHub styles, plus a choice of
+  code block and Mermaid themes for light and dark
 - **Links**: web links open in your browser; relative links to other files open them in Notepad++
   (`other.md#heading` scrolls to the heading); folders and binary files are revealed in Explorer, never run
 - **Relative images** (`![](img/diagram.png)`) load from the document's folder
@@ -125,8 +127,53 @@ plugins\GRIN-Markdown\
 | `SyncScroll`      | `1`                                        | Preview follows the editor (also on the menu)   |
 | `Theme`           | `auto`                                     | `auto` (follow Notepad++), `light` or `dark`    |
 | `UpdateDelayMs`   | `300`                                      | Delay after typing before the preview refreshes |
+| `CustomCss`       | `1`                                        | Use the custom stylesheets (also on the menu)   |
+| `CustomCssLight`  | *(empty)*                                  | Stylesheet for the light theme                  |
+| `CustomCssDark`   | *(empty)*                                  | Stylesheet for the dark theme                   |
+| `CustomCssMode`   | `layer`                                    | `layer` or `replace`, see below                 |
+| `CodeThemeLight`  | *(empty)*                                  | Code block theme for light; empty = GitHub's    |
+| `CodeThemeDark`   | *(empty)*                                  | Code block theme for dark; empty = GitHub's     |
+| `MermaidThemeLight` | `default`                                | `default`, `neutral`, `forest`, `dark` or `base` |
+| `MermaidThemeDark`  | `dark`                                   | Same choices as `MermaidThemeLight`             |
 
 The WebView2 cache lives in `%LOCALAPPDATA%\GRIN-Markdown\WebView2`.
+
+## Custom styling
+
+Each theme can have its own stylesheet. **Plugins > GRIN-Markdown > Edit Custom CSS...** opens the one for
+the current theme, creating `grin-light.css` or `grin-dark.css` in the plugin config folder from a commented
+template if none is set yet. Saving it refreshes the preview, which keeps showing the last Markdown document
+while you edit. Paths in `CustomCssLight` / `CustomCssDark` may be relative to the config folder and may use
+`%ENVIRONMENT%` variables. Leave one empty to use only the built-in styles for that theme.
+
+With `CustomCssMode=layer` (the default) your stylesheet sits on top of the built-in GitHub Markdown, code and
+Mermaid styles. Those are loaded into CSS cascade layers and yours is not, so your rules always win, even plain
+selectors against GitHub's more specific ones, and everything you don't style stays as on GitHub:
+
+```css
+h1, h2 { color: #046fc9; }
+body, .markdown-body { font-family: "Segoe UI", sans-serif; font-size: 15px; }
+blockquote { border-left-color: #70b1e7; }
+```
+
+`CustomCssMode=replace` drops the GitHub Markdown styles so your stylesheet starts from a blank page; the
+plugin's own fixes for task lists, alerts and diagrams stay. Rendered Markdown is inside
+`<article class="markdown-body">`, and `<html data-theme="light|dark">` tells you the active theme.
+
+The preview stays offline: remote `@import`s and web fonts are blocked. Use fonts installed in Windows by name,
+or put font files and images next to the stylesheet and reference them with relative `url()`s.
+
+Ready-made stylesheets are in [`themes/`](themes). Copy one into the plugin config folder
+(`%APPDATA%\Notepad++\plugins\config`) and point a setting at it:
+
+| File | For | Setting |
+| --- | --- | --- |
+| [`nord-nova.css`](themes/nord-nova.css) | Dark | `CustomCssDark=nord-nova.css` (pairs well with `CodeThemeDark=nord`) |
+
+Code themes: `github`, `github-dark`, `github-dark-dimmed`, `vs`, `vs2015`, `xcode`, `intellij-light`,
+`atom-one-light`, `atom-one-dark`, `stackoverflow-light`, `stackoverflow-dark`, `a11y-light`, `a11y-dark`,
+`tokyo-night-light`, `tokyo-night-dark`, `rose-pine-dawn`, `rose-pine`, `night-owl`, `monokai`, `nord`.
+Choosing one also gives code blocks that theme's background.
 
 ## Security
 
@@ -136,7 +183,8 @@ The preview treats documents as untrusted:
 - A strict Content-Security-Policy only allows the plugin's own scripts, and Mermaid runs with `securityLevel: 'strict'`
 - The page cannot navigate anywhere; every link goes through the plugin, which only opens `http(s)`/`mailto`
   in the browser and never executes local files
-- The document folder is exposed to the page only for image, audio and video files
+- The document folder is exposed to the page only for image, audio and video files (plus stylesheets and fonts,
+  which the custom styling uses)
 - Remote images in a document (for example badges) are loaded, as they are on GitHub
 
 ## Building

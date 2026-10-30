@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <shlobj.h>
 #include <shlwapi.h>
+#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -32,6 +33,9 @@ namespace
 		CmdThemeLight,
 		CmdThemeDark,
 		CmdSep3,
+		CmdUseCustomCss,
+		CmdEditCustomCss,
+		CmdSep4,
 		CmdEditSettings,
 		CmdAbout,
 		CmdCount
@@ -154,6 +158,74 @@ namespace
 	void ThemeLight() { SetTheme(ThemeMode::Light); }
 	void ThemeDark() { SetTheme(ThemeMode::Dark); }
 
+	void ToggleCustomCss()
+	{
+		g_settings.useCustomCss = !g_settings.useCustomCss;
+		SetChecked(CmdUseCustomCss, g_settings.useCustomCss);
+		g_settings.Save(g_iniPath);
+		if (g_panel)
+			g_panel->OnThemeChanged();
+	}
+
+	constexpr char kCssTemplate[] =
+		"/* GRIN-Markdown custom stylesheet for the %s preview theme.\r\n"
+		"\r\n"
+		"   Rules here are layered on top of the built-in GitHub Markdown, code and\r\n"
+		"   Mermaid styles and always win over them, so plain selectors work:\r\n"
+		"\r\n"
+		"     h1 { color: #046fc9; }\r\n"
+		"\r\n"
+		"   Rendered Markdown sits inside <article class=\"markdown-body\">. Code blocks get\r\n"
+		"   their colors from CodeTheme%s and diagrams from MermaidTheme%s in the\r\n"
+		"   settings file. CustomCssMode=replace drops the GitHub Markdown styles so this\r\n"
+		"   file starts from a blank page.\r\n"
+		"\r\n"
+		"   The preview is offline: use fonts installed in Windows by name, or font files\r\n"
+		"   next to this file via url(). Saving this file refreshes the preview. */\r\n"
+		"\r\n"
+		"/*\r\n"
+		"body, .markdown-body {\r\n"
+		"  font-family: \"Segoe UI\", sans-serif;\r\n"
+		"  font-size: 15px;\r\n"
+		"}\r\n"
+		"\r\n"
+		".markdown-body h1, .markdown-body h2 {\r\n"
+		"  color: #046fc9;\r\n"
+		"}\r\n"
+		"*/\r\n";
+
+	// Opens the custom stylesheet of the current theme, creating it from a template first if needed.
+	void EditCustomCss()
+	{
+		const bool dark = Panel().IsDarkTheme();
+		std::wstring& setting = dark ? g_settings.customCssDark : g_settings.customCssLight;
+		if (setting.empty())
+			setting = dark ? L"grin-dark.css" : L"grin-light.css"; // in the plugin config folder
+		const std::wstring path = g_settings.ResolvePath(setting);
+
+		if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES)
+		{
+			const char* theme = dark ? "dark" : "light";
+			const char* suffix = dark ? "Dark" : "Light";
+			char text[sizeof(kCssTemplate) + 32];
+			const int len = sprintf_s(text, kCssTemplate, theme, suffix, suffix);
+			const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+			if (file != INVALID_HANDLE_VALUE)
+			{
+				DWORD written = 0;
+				WriteFile(file, text, static_cast<DWORD>(len > 0 ? len : 0), &written, nullptr);
+				CloseHandle(file);
+			}
+		}
+
+		g_settings.useCustomCss = true;
+		SetChecked(CmdUseCustomCss, true);
+		g_settings.Save(g_iniPath);
+		if (g_panel)
+			g_panel->OnThemeChanged();
+		SendMessageW(g_npp._nppHandle, NPPM_DOOPEN, 0, reinterpret_cast<LPARAM>(path.c_str()));
+	}
+
 	void EditSettings()
 	{
 		g_settings.Save(g_iniPath); // make sure every key is present
@@ -169,7 +241,8 @@ namespace
 			L"Renders tables, task lists, footnotes, emoji, alerts,\n"
 			L"syntax-highlighted code and ```mermaid diagrams.\n\n"
 			L"Double-click the preview to jump to that line.\n"
-			L"Edit Settings... changes which extensions are previewed.\n\n"
+			L"Edit Settings... changes which extensions are previewed.\n"
+			L"Edit Custom CSS... styles the preview, one file per theme.\n\n"
 			L"Bundles markdown-it, highlight.js, Mermaid, DOMPurify and\n"
 			L"github-markdown-css (see THIRD_PARTY_NOTICES.md).\n"
 			L"Rendering by Microsoft Edge WebView2.\n\n"
@@ -195,6 +268,9 @@ namespace
 		set(CmdThemeLight, L"Theme: Light", ThemeLight, g_settings.theme == ThemeMode::Light);
 		set(CmdThemeDark, L"Theme: Dark", ThemeDark, g_settings.theme == ThemeMode::Dark);
 		set(CmdSep3, L"", nullptr);
+		set(CmdUseCustomCss, L"Use Custom CSS", ToggleCustomCss, g_settings.useCustomCss);
+		set(CmdEditCustomCss, L"Edit Custom CSS...", EditCustomCss);
+		set(CmdSep4, L"", nullptr);
 		set(CmdEditSettings, L"Edit Settings...", EditSettings);
 		set(CmdAbout, L"About...", About);
 	}
@@ -259,7 +335,8 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notification)
 			break;
 		case NPPN_FILESAVED:
 		{
-			// Saving the settings file from "Edit Settings..." applies it immediately.
+			// Saving the settings file from "Edit Settings..." applies it immediately; saving a
+			// custom stylesheet reloads it through UpdateNow (its write time is part of the URL).
 			wchar_t path[MAX_PATH * 4] = {};
 			SendMessageW(g_npp._nppHandle, NPPM_GETFULLPATHFROMBUFFERID, notification->nmhdr.idFrom, reinterpret_cast<LPARAM>(path));
 			if (lstrcmpiW(path, g_iniPath.c_str()) == 0)
@@ -267,6 +344,7 @@ extern "C" __declspec(dllexport) void beNotified(SCNotification* notification)
 				g_settings.Load(g_iniPath);
 				SetChecked(CmdSyncScroll, g_settings.syncScroll);
 				SetChecked(CmdPreviewAll, g_settings.previewAllFiles);
+				SetChecked(CmdUseCustomCss, g_settings.useCustomCss);
 				UpdateThemeChecks();
 				if (g_panel)
 					g_panel->OnThemeChanged();

@@ -1,0 +1,144 @@
+/* Nord Nova: a GRIN-Markdown dark theme based on the Nord palette (nordtheme.com).
+
+   Polar Night for backgrounds, Snow Storm for text, Frost for structure and
+   links. Headings step from a vivid blue H1 to lighter Frost blues. GitHub
+   alerts (Note, Tip, ...) and code block colors are left as GitHub / the code
+   theme draw them. Layered on top of the GitHub styles, so anything not listed
+   here keeps GitHub's layout.
+
+   To use it, copy this file into Notepad++'s plugin config folder
+   (%APPDATA%\Notepad++\plugins\config) and set CustomCssDark=nord-nova.css.
+   Set CodeThemeDark (e.g. nord) to choose the code block colors. */
+
+/* Palette ------------------------------------------------------------------ */
+:root {
+  /* Polar Night */
+  --nord0: #2e3440;  /* page */
+  --nord1: #3b4252;  /* panels */
+  --nord2: #434c5e;  /* selection, raised */
+  --nord3: #4c566a;  /* borders */
+  --nord-comment: #616e88; /* Nord's brightened nord3 for comments */
+  --nord-code-bg: #292e39; /* between nord0 and nord1, as Nord editor themes use */
+  /* Snow Storm */
+  --nord4: #d8dee9;  /* text */
+  --nord5: #e5e9f0;
+  --nord6: #eceff4;  /* bright text */
+  /* Frost */
+  --nord7: #8fbcbb;  /* classes, types */
+  --nord8: #88c0d0;  /* primary accent, functions */
+  --nord9: #81a1c1;  /* keywords, operators */
+  --nord10: #5e81ac; /* secondary */
+  /* Aurora */
+  --nord11: #bf616a; /* red */
+  --nord12: #d08770; /* orange */
+  --nord13: #ebcb8b; /* yellow */
+  --nord14: #a3be8c; /* green */
+  --nord15: #b48ead; /* purple */
+}
+
+/* Page ---------------------------------------------------------------------- */
+body,
+.markdown-body {
+  background: var(--nord0);
+  color: var(--nord4);
+  font-family: "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.markdown-body ::selection { background: var(--nord2); }
+
+/* Headings: Frost, deep blue H1 stepping lighter */
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 { font-weight: 600; }
+
+.markdown-body h1 { color: #056ef7; border-bottom-color: var(--nord3); }
+.markdown-body h2 { color: var(--nord9); border-bottom-color: var(--nord3); }
+.markdown-body h3 { color: var(--nord8); }
+.markdown-body h4 { color: var(--nord6); }
+.markdown-body h5 { color: var(--nord5); }
+.markdown-body h6 { color: var(--nord-comment); }
+
+/* Text */
+.markdown-body a { color: var(--nord8); }
+.markdown-body a:hover { color: var(--nord7); }
+.markdown-body strong { color: var(--nord6); }
+.markdown-body em { color: var(--nord5); }
+.markdown-body del { color: var(--nord-comment); }
+.markdown-body mark { background: var(--nord13); color: var(--nord0); }
+.markdown-body hr { background-color: var(--nord3); height: 2px; }
+
+.markdown-body blockquote {
+  color: var(--nord4);
+  opacity: .85;
+  border-left-color: var(--nord10);
+  background: var(--nord1);
+  padding: 4px 16px;
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-body kbd {
+  background: var(--nord1);
+  color: var(--nord6);
+  border-color: var(--nord3);
+  box-shadow: inset 0 -1px 0 var(--nord3);
+}
+
+/* Lists, footnotes */
+.markdown-body li::marker { color: var(--nord9); }
+.markdown-body .footnotes { color: var(--nord-comment); border-top-color: var(--nord3); }
+
+/* Tables (also the YAML front matter table) */
+.markdown-body table th,
+.markdown-body table td { border-color: var(--nord3); }
+.markdown-body table tr { background: var(--nord0); border-top-color: var(--nord3); }
+.markdown-body table tr:nth-child(2n) { background: #323946; }
+.markdown-body table th { background: var(--nord1); color: var(--nord8); }
+.markdown-body table.front-matter td:first-child { color: var(--nord7); }
+
+/* Code ---------------------------------------------------------------------- */
+.markdown-body code,
+.markdown-body kbd,
+.markdown-body pre { font-family: "Cascadia Code", Consolas, monospace; }
+
+/* Inline code (not code blocks, which belong to the code theme) */
+.markdown-body :not(pre) > code {
+  background: var(--nord1);
+  color: var(--nord8);
+}
+
+/* Code blocks: only a Nord frame. Background and syntax colors come from the
+   code theme (CodeThemeDark; empty = GitHub's dark code colors). */
+.markdown-body pre {
+  border: 1px solid var(--nord1);
+  border-left: 3px solid var(--nord10);
+  border-radius: 6px;
+}
+
+/* GitHub alerts (Note, Tip, ...) keep GitHub's own styling. GitHub sizes the
+   left border as .25em of its 16px text; pin it so the smaller font here matches. */
+.markdown-body .markdown-alert { border-left-width: 4px; }
+
+/* Mermaid flowcharts: Nord panels and Frost lines. Mermaid styles each diagram
+   from inside its SVG, hence !important. Other diagram types keep MermaidThemeDark. */
+.mermaid-out .node rect,
+.mermaid-out .node polygon,
+.mermaid-out .node circle,
+.mermaid-out .node ellipse,
+.mermaid-out .node path {
+  fill: var(--nord1) !important;
+  stroke: var(--nord8) !important;
+}
+.mermaid-out .nodeLabel,
+.mermaid-out .node text { color: var(--nord6) !important; fill: var(--nord6) !important; }
+.mermaid-out .flowchart-link { stroke: var(--nord9) !important; }
+.mermaid-out marker path { fill: var(--nord9) !important; stroke: var(--nord9) !important; }
+.mermaid-out .edgeLabel,
+.mermaid-out .edgeLabel p,
+.mermaid-out .edgeLabel rect { background: var(--nord0) !important; fill: var(--nord0) !important; color: var(--nord13) !important; }
+.mermaid-out .cluster rect { fill: var(--nord-code-bg) !important; stroke: var(--nord3) !important; }
+.mermaid-error { border-color: var(--nord11); color: var(--nord11); }

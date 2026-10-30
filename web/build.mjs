@@ -25,9 +25,12 @@ const copies = {
   'node_modules/mermaid/dist/mermaid.min.js': 'mermaid.min.js',
   'node_modules/github-markdown-css/github-markdown-light.css': 'github-markdown-light.css',
   'node_modules/github-markdown-css/github-markdown-dark.css': 'github-markdown-dark.css',
-  'node_modules/highlight.js/styles/github.min.css': 'hljs-github.css',
-  'node_modules/highlight.js/styles/github-dark.min.css': 'hljs-github-dark.css',
 };
+// Code themes selectable with CodeThemeLight / CodeThemeDark; keep in sync with CODE_THEMES in src/main.js.
+const codeThemes = ['github', 'github-dark', 'github-dark-dimmed', 'vs', 'vs2015', 'xcode', 'intellij-light',
+  'atom-one-light', 'atom-one-dark', 'stackoverflow-light', 'stackoverflow-dark', 'a11y-light', 'a11y-dark',
+  'tokyo-night-light', 'tokyo-night-dark', 'rose-pine-dawn', 'rose-pine', 'night-owl', 'monokai', 'nord'];
+for (const name of codeThemes) copies[`node_modules/highlight.js/styles/${name}.min.css`] = `hljs-${name}.css`;
 for (const [from, to] of Object.entries(copies)) copyFileSync(from, `${out}/${to}`);
 console.log('web assets written to', out);
 

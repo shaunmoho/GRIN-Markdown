@@ -162,7 +162,8 @@ if ($Install) {
     $copy = "if (Test-Path '$target') { Remove-Item -Recurse -Force '$target' }; Copy-Item -Recurse -Force '$source' '$target'"
     try {
         Invoke-Expression $copy
-    } catch [System.UnauthorizedAccessException] {
+    } catch {
+        # Remove-Item reports access denied as an ArgumentException, so catch everything here.
         Write-Host '    Needs administrator rights; asking for elevation...'
         $proc = Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile', '-Command', $copy
         if ($proc.ExitCode) { throw 'Elevated copy failed.' }

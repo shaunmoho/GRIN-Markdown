@@ -43,12 +43,25 @@ namespace
 
 void Settings::Load(const std::wstring& iniPath)
 {
+	_configDir = iniPath;
+	PathRemoveFileSpecW(_configDir.data());
+	_configDir.resize(wcslen(_configDir.c_str()));
+
 	syncScroll = GetPrivateProfileIntW(kSection, L"SyncScroll", 1, iniPath.c_str()) != 0;
 	previewAllFiles = GetPrivateProfileIntW(kSection, L"PreviewAllFiles", 0, iniPath.c_str()) != 0;
 	updateDelayMs = std::clamp<int>(GetPrivateProfileIntW(kSection, L"UpdateDelayMs", 300, iniPath.c_str()), 0, 5000);
 
 	const std::wstring themeName = ToLower(ReadString(iniPath, L"Theme", L"auto"));
 	theme = themeName == L"light" ? ThemeMode::Light : themeName == L"dark" ? ThemeMode::Dark : ThemeMode::Auto;
+
+	useCustomCss = GetPrivateProfileIntW(kSection, L"CustomCss", 1, iniPath.c_str()) != 0;
+	replaceGithubCss = ToLower(ReadString(iniPath, L"CustomCssMode", L"layer")) == L"replace";
+	customCssLight = Trim(ReadString(iniPath, L"CustomCssLight", L""));
+	customCssDark = Trim(ReadString(iniPath, L"CustomCssDark", L""));
+	codeThemeLight = ToLower(Trim(ReadString(iniPath, L"CodeThemeLight", L"")));
+	codeThemeDark = ToLower(Trim(ReadString(iniPath, L"CodeThemeDark", L"")));
+	mermaidThemeLight = ToLower(Trim(ReadString(iniPath, L"MermaidThemeLight", L"default")));
+	mermaidThemeDark = ToLower(Trim(ReadString(iniPath, L"MermaidThemeDark", L"dark")));
 
 	extensions.clear();
 	const std::wstring list = ToLower(ReadString(iniPath, L"Extensions", kDefaultExtensions));
@@ -84,6 +97,15 @@ void Settings::Save(const std::wstring& iniPath) const
 		list += ext;
 	}
 	WriteString(iniPath, L"Extensions", list);
+
+	WriteString(iniPath, L"CustomCss", useCustomCss ? L"1" : L"0");
+	WriteString(iniPath, L"CustomCssMode", replaceGithubCss ? L"replace" : L"layer");
+	WriteString(iniPath, L"CustomCssLight", customCssLight);
+	WriteString(iniPath, L"CustomCssDark", customCssDark);
+	WriteString(iniPath, L"CodeThemeLight", codeThemeLight);
+	WriteString(iniPath, L"CodeThemeDark", codeThemeDark);
+	WriteString(iniPath, L"MermaidThemeLight", mermaidThemeLight);
+	WriteString(iniPath, L"MermaidThemeDark", mermaidThemeDark);
 }
 
 bool Settings::IsMarkdownExtension(const std::wstring& path) const
@@ -93,4 +115,18 @@ bool Settings::IsMarkdownExtension(const std::wstring& path) const
 		return false;
 	const std::wstring lower = ToLower(ext);
 	return std::find(extensions.begin(), extensions.end(), lower) != extensions.end();
+}
+
+std::wstring Settings::ResolvePath(const std::wstring& setting) const
+{
+	if (setting.empty())
+		return {};
+	wchar_t expanded[MAX_PATH * 4];
+	const DWORD n = ExpandEnvironmentStringsW(setting.c_str(), expanded, static_cast<DWORD>(std::size(expanded)));
+	std::wstring path = n > 0 && n <= std::size(expanded) ? expanded : setting;
+	if (PathIsRelativeW(path.c_str()) && !_configDir.empty())
+		path = _configDir + L"\\" + path;
+	wchar_t full[MAX_PATH * 4];
+	const DWORD len = GetFullPathNameW(path.c_str(), static_cast<DWORD>(std::size(full)), full, nullptr);
+	return len > 0 && len < std::size(full) ? full : path;
 }
